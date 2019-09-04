@@ -23,7 +23,8 @@ function generate(
   excludes = [],
   generationDate = "a long long time ago...",
   modelsOnly = false,
-  noReact = false
+  noReact = false,
+  typedRefPropViews = false
 ) {
   excludes.push(...buildInExcludes)
 
@@ -171,12 +172,31 @@ export const ${name}Enum = ${handleEnumTypeCore(type)}
       nonPrimitiveFields,
       imports,
       modelProperties,
-      refs
+      refs,
+      refsForTypedPropViews
     } = resolveFieldsAndImports(type)
 
     const { name } = type
     const flowerName = toFirstLower(name)
 
+    // Generates view props for any types reference props
+    let refPropViews = ""
+    if (refsForTypedPropViews.length > 0 && typedRefPropViews) {
+      refsForTypedPropViews.forEach(ref => {
+        // ref[0]: field name
+        // ref[1]: model type name
+        // ref[2]: is an array type (wrapped in types.array())
+        if (refPropViews != "") {
+          refPropViews += ","
+        }
+        refPropViews += `
+    get ${ref[0]}Prop() {
+        return self.${ref[0]} as ${ref[2] ? "Array<" : ""}Instance<typeof ${
+          ref[1]
+        }Model>${ref[2] ? ">" : ""};
+    }`
+      })
+    }
     const entryFile = `${ifTS('import { Instance } from "mobx-state-tree"\n')}\
 import { ${name}ModelBase } from "./${name}Model.base${importPostFix}"
 
@@ -206,7 +226,12 @@ ${exampleAction}
     const modelFile = `\
 ${header}
 
-import { types } from "mobx-state-tree"
+import { ${ifTS(
+      refsForTypedPropViews.length > 0 && typedRefPropViews
+        ? " IAnyModelType, Instance,"
+        : "",
+      ""
+    )} types } from "mobx-state-tree"
 import { MSTGQLObject,${
       refs.length > 0 ? " MSTGQLRef," : ""
     } QueryBuilder } from "mst-gql"
@@ -227,7 +252,7 @@ ${modelProperties}
   .views(self => ({
     get store() {
       return self.__getStore${format === "ts" ? `<RootStoreType>` : ""}()
-    }
+    }${refPropViews != "" ? "," + refPropViews : ""}
   }))
 
 ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
@@ -290,6 +315,7 @@ ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
     const primitiveFields = []
     const nonPrimitiveFields = []
     const refs = []
+    const refsForTypedPropViews = []
 
     let modelProperties = ""
     if (type.fields) {
@@ -304,7 +330,8 @@ ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
       nonPrimitiveFields,
       imports,
       modelProperties,
-      refs
+      refs,
+      refsForTypedPropViews
     }
 
     function handleField(field) {
@@ -319,7 +346,7 @@ ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
       return r
     }
 
-    function handleFieldType(fieldName, fieldType, useMaybe) {
+    function handleFieldType(fieldName, fieldType, useMaybe, inList) {
       switch (fieldType.kind) {
         case "SCALAR":
           primitiveFields.push(fieldName)
@@ -332,7 +359,7 @@ ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
           )
         case "OBJECT":
           return wrap(
-            handleObjectFieldType(fieldName, fieldType),
+            handleObjectFieldType(fieldName, fieldType, inList),
             useMaybe,
             "types.maybeNull(",
             ")"
@@ -341,7 +368,8 @@ ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
           return `types.optional(types.array(${handleFieldType(
             fieldName,
             skipNonNull(fieldType.ofType),
-            false // dont wrap contents in maybe
+            false, // dont wrap contents in maybe
+            true
           )}), [])`
         case "ENUM":
           primitiveFields.push(fieldName)
@@ -366,7 +394,7 @@ ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
       }
     }
 
-    function handleObjectFieldType(fieldName, fieldType) {
+    function handleObjectFieldType(fieldName, fieldType, inList) {
       nonPrimitiveFields.push([fieldName, fieldType.name])
       const isSelf = fieldType.name === currentType
 
@@ -382,11 +410,24 @@ ${generateFragments(name, primitiveFields, nonPrimitiveFields)}
 
       // always using late prevents potential circular dependency issues between files
       const realType = `types.late(()${
-        isSelf && format === "ts" ? ": any" : ""
+        isSelf && format === "ts"
+          ? typedRefPropViews
+            ? ": IAnyModelType"
+            : ": any"
+          : typedRefPropViews
+          ? ": IAnyModelType"
+          : ""
       } => ${fieldType.name}Model)`
 
+      // Collect refs for typePropView generation
+      if (typedRefPropViews) {
+        refsForTypedPropViews.push([fieldName, fieldType.name, inList])
+      }
+
       // this object is not a root type, so assume composition relationship
-      if (!isSelf && !rootTypes.includes(fieldType.name)) return realType
+      if (!isSelf && !rootTypes.includes(fieldType.name)) {
+        return realType
+      }
 
       // the target is a root type, store a reference
       refs.push([fieldName, fieldType.name])
@@ -507,10 +548,18 @@ ${
 export const RootStore = RootStoreBase
 ${exampleAction}
 `
+    let IAnyModelTypeImport = ifTS(
+      (typedRefPropViews && rootTypes.length > 0) || objectTypes.length > 0
+        ? "IAnyModelType, Instance, "
+        : ""
+    )
+    let IAnyModelTypeCast = ifTS(
+      typedRefPropViews && objectTypes.length > 0 ? ": IAnyModelType" : ""
+    )
 
     const modelFile = `\
 ${header}
-import { types } from "mobx-state-tree"
+import { ${IAnyModelTypeImport} types } from "mobx-state-tree"
 import { MSTGQLStore, configureStoreMixin${
       format === "ts" ? ", QueryOptions" : ""
     } } from "mst-gql"
@@ -545,7 +594,7 @@ ${inputTypes
 export const RootStoreBase = ${modelsOnly ? "types.model()" : "MSTGQLStore"}
   .named("RootStore")
   .extend(configureStoreMixin([${objectTypes
-    .map(s => `['${s}', () => ${s}Model]`)
+    .map(s => `['${s}', ()${IAnyModelTypeCast} => ${s}Model]`)
     .join(", ")}], [${rootTypes.map(s => `'${s}'`).join(", ")}]))
   .props({
 ${rootTypes
@@ -973,7 +1022,8 @@ function scaffold(
     format: "ts",
     roots: [],
     excludes: [],
-    modelsOnly: false
+    modelsOnly: false,
+    typedRefPropViews: false
   }
 ) {
   const schema = graphql.buildSchema(definition)
@@ -986,7 +1036,8 @@ function scaffold(
     options.roots || [],
     options.excludes || [],
     "<during unit test run>",
-    options.modelsOnly || false
+    options.modelsOnly || false,
+    options.typedRefPropViews || false
   )
 }
 

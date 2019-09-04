@@ -5,7 +5,7 @@ const fs = require("fs")
 const child_process = require("child_process")
 const graphql = require("graphql")
 
-const { getConfig, mergeConfigs } = require('./config');
+const { getConfig, mergeConfigs } = require("./config")
 const { generate, writeFiles } = require("./generate")
 
 const definition = {
@@ -16,7 +16,8 @@ const definition = {
   "--modelsOnly": Boolean,
   "--force": Boolean,
   "--noReact": Boolean,
-  "--separate": Boolean
+  "--separate": Boolean,
+  "--typedRefPropViews": Boolean
 }
 
 function main() {
@@ -33,7 +34,17 @@ function main() {
     throw e
   }
 
-  const { format, outDir, input, roots, excludes, modelsOnly, forceAll, noReact } = mergeConfigs(args, config);
+  const {
+    format,
+    outDir,
+    input,
+    roots,
+    excludes,
+    modelsOnly,
+    forceAll,
+    noReact,
+    typedRefPropViews
+  } = mergeConfigs(args, config)
   const separate = !!args["--separate"]
 
   console.log(
@@ -93,7 +104,8 @@ function main() {
     excludes,
     new Date().toUTCString(),
     modelsOnly,
-    noReact
+    noReact,
+    typedRefPropViews
   )
   writeFiles(outDir, files, format, forceAll, true, separate)
 }
