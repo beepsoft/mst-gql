@@ -1041,7 +1041,12 @@
 
         getCollectionName: function getCollectionName(typename) {
           if (namingConvention == "js") {
-            return pluralize(camelcase(typename));
+            // Pluralize only last word (pluralize may fail with words that are
+            // not valid English words as is the case with LongCamelCaseTypeNames)
+            var newName = camelcase(typename);
+            var parts = newName.split(/(?=[A-Z])/);
+            parts[parts.length - 1] = pluralize(parts[parts.length - 1]);
+            return parts.join("");
           }
 
           return typename.toLowerCase() + "s";
