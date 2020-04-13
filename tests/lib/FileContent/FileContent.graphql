@@ -1,0 +1,9 @@
+type Query {
+  files: [FileContent]!
+}
+
+type FileContent {
+  id: ID
+  text: String!
+  path: String!
+}

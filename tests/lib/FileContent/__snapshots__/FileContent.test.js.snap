@@ -1,0 +1,56 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`FileContent.graphql tests it should be able to instantiate store and load initial data for a type named FileContent 1`] = `
+Object {
+  "__queryCache": Object {},
+  "fileContents": Object {
+    "1": Object {
+      "__typename": "FileContent",
+      "id": "1",
+      "path": "/path/to/file1",
+      "text": "First initial file content",
+    },
+  },
+}
+`;
+
+exports[`FileContent.graphql tests it should be able to instantiate store and load initial data for a type named FileContent 3`] = `
+Object {
+  "__queryCache": Object {
+    "query files { files {
+        __typename
+id
+text
+path
+
+      } }undefined": Object {
+      "data": Object {
+        "files": Array [
+          Object {
+            "__typename": "FileContent",
+            "id": "1",
+          },
+          Object {
+            "__typename": "FileContent",
+            "id": "2",
+          },
+        ],
+      },
+    },
+  },
+  "fileContents": Object {
+    "1": Object {
+      "__typename": "FileContent",
+      "id": "1",
+      "path": "/path/to/file1",
+      "text": "First file content",
+    },
+    "2": Object {
+      "__typename": "FileContent",
+      "id": "2",
+      "path": "/path/to/file2",
+      "text": "Second file content",
+    },
+  },
+}
+`;
